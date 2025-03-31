@@ -1,0 +1,111 @@
+#!/bin/bash
+# LobeChat 部署工具统一入口
+
+VERSION="1.0.0"
+DEPLOY_HOME=$(cd "$(dirname "$0")/.." && pwd)
+CONFIG_FILE="${DEPLOY_HOME}/etc/deploy.conf"
+LOG_DIR="${DEPLOY_HOME}/logs"
+
+# 加载公共函数
+source "${DEPLOY_HOME}/lib/common-functions.sh"
+
+# 初始化环境
+init_environment() {
+    mkdir -p "${LOG_DIR}"
+    
+    # 如果配置文件不存在，从模板创建
+    if [ ! -f "${CONFIG_FILE}" ]; then
+        cp "${DEPLOY_HOME}/etc/config-template.conf" "${CONFIG_FILE}"
+        log "WARN" "已从模板创建配置文件，请编辑: ${CONFIG_FILE}"
+        exit 1
+    fi
+    
+    # 加载配置
+    source "${CONFIG_FILE}"
+}
+
+# 显示帮助
+show_help() {
+    echo -e "\nLobeChat 部署工具 v${VERSION}"
+    echo -e "用法: lobe-deploy <命令> [选项]\n"
+    echo "命令:"
+    echo "  domain      使用域名模式部署"
+    echo "  ip          使用IP模式部署"
+    echo "  local       使用本地开发模式部署"
+    echo "  logs        查看部署日志"
+    echo "  version     显示版本信息"
+    echo "  help        显示帮助信息"
+    echo -e "\n详细帮助: lobe-deploy <命令> --help"
+}
+
+# 查看日志
+view_logs() {
+    local log_type=$1
+    local lines=${2:-20}
+    
+    case "$log_type" in
+        error)
+            local log_file=$(ls -t "${LOG_DIR}"/deploy-error-*.log 2>/dev/null | head -1)
+            ;;
+        *)
+            local log_file=$(ls -t "${LOG_DIR}"/deploy-*.log 2>/dev/null | head -1)
+            ;;
+    esac
+    
+    if [ -n "$log_file" ]; then
+        tail -n "$lines" "$log_file"
+    else
+        echo "未找到日志文件"
+    fi
+}
+
+# 主函数
+main() {
+    # 确保基本环境正常
+    init_environment
+    
+    # 处理命令
+    local command=$1
+    if [ -z "$command" ]; then
+        show_help
+        exit 0
+    fi
+    
+    shift  # 移除第一个参数
+    
+    case "$command" in
+        domain)
+            init_logging
+            "${DEPLOY_HOME}/lib/deploy-domain.sh" "$@"
+            ;;
+        ip)
+            init_logging
+            "${DEPLOY_HOME}/lib/deploy-ip.sh" "$@"
+            ;;
+        local)
+            init_logging
+            "${DEPLOY_HOME}/lib/deploy-local.sh" "$@"
+            ;;
+        logs)
+            if [ "$1" = "error" ]; then
+                view_logs "error" "$2"
+            else
+                view_logs "normal" "$1"
+            fi
+            ;;
+        version)
+            echo "LobeChat 部署工具 v${VERSION}"
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        *)
+            echo "未知命令: $command"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+# 执行主函数
+main "$@"
